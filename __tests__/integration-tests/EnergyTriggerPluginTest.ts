@@ -137,7 +137,7 @@ test('test trigger tibber service via energy plugin - expect triggered ', async 
     .setup( instance => instance.getLastPowerData). returns(() => alphaDetailResp )
     .setup( instance => instance.isBatteryCurrentlyLoading). returns(() => true );
 
-  const tibberServiceOrigin = new TibberService(loging.object(), 'apiKey', 'queryUrl', 0.2, 100, false);
+  const tibberServiceOrigin = new TibberService(loging.object(), 'apiKey', 'queryUrl', 0.2, 100, false, true);
   tibberServiceOrigin.setLogger(loging.object());
 
   const tibberServiceMock = new Mock<TibberService>()
@@ -190,7 +190,7 @@ test('test trigger tibber service via energy plugin -  expect stop battery loadi
     .setup( instance => instance.checkAndEnableReloading). returns(() => new Promise<Map<string, undefined>>((resolve => undefined)))
     .setup( instance => instance.isBatteryCurrentlyLoading). returns(() => false)
     .setup( instance => instance.stopLoading). returns(() => new Promise<void>( resolve => undefined));
-  const tibberServiceOrigin = new TibberService(loging.object(), 'apiKey', 'queryUrl', 0.2, 333, false);
+  const tibberServiceOrigin = new TibberService(loging.object(), 'apiKey', 'queryUrl', 0.2, 333, false, true);
   tibberServiceOrigin.setLogger(loging.object());
 
   const tibberServiceMock = new Mock<TibberService>()
@@ -243,7 +243,7 @@ test('test trigger tibber service via energy plugin - expect not triggered', asy
     .setup( instance => instance.getLastPowerData). returns(() => alphaDetailResp )
     .setup (instance => instance.isBatteryCurrentlyLoading).returns( () => true ) ;
 
-  const tibberServiceOrigin = new TibberService(loging.object(), 'apiKey', 'queryUrl', 0.5, 1.0, false);
+  const tibberServiceOrigin = new TibberService(loging.object(), 'apiKey', 'queryUrl', 0.5, 1.0, false, true);
   tibberServiceOrigin.setLogger(loging.object());
 
   const tibberServiceMock = new Mock<TibberService>()
@@ -309,7 +309,7 @@ test('test trigger tibber service via energy plugin - expect triggered despite o
     .setup( instance => instance.isBatteryCurrentlyLoading). returns(() => true )
     .setup( instance => instance.getSettingsData). throws(() => new Error('Could not load data') );
 
-  const tibberServiceOrigin = new TibberService(loging.object(), 'apiKey', 'queryUrl', 0.2, 1.0, false);
+  const tibberServiceOrigin = new TibberService(loging.object(), 'apiKey', 'queryUrl', 0.2, 1.0, false, true);
   tibberServiceOrigin.setLogger(loging.object());
 
   const tibberServiceMock = new Mock<TibberService>()

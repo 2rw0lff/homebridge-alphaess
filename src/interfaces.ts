@@ -76,3 +76,13 @@ export class TriggerConfig {
     this.socLoadingThreshold = socLoadingThreshold;
   }
 }
+
+export class SettingsData{
+  settingsUnloading: Map<string, unknown>;
+  settingsLoading: Map<string, unknown>;
+  constructor(settingsUnloading, settingsLoading){
+    this.settingsLoading = settingsLoading;
+    this.settingsUnloading = settingsUnloading;
+  }
+
+}

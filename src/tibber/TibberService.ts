@@ -3,6 +3,7 @@ import { IPrice } from 'tibber-api/lib/src/models/IPrice';
 import { PriceTrigger } from '../interfaces';
 import { Logging } from 'homebridge';
 
+
 export class TibberService {
   private config: IConfig;
   private dailyMap: Map<number, PriceTrigger>;
@@ -14,10 +15,11 @@ export class TibberService {
   private thresholdEur: number ;
   private thresholdTotalEur: number;
   private triggerdToday: boolean;
+  private tibberDischargeDisabled: boolean;
 
 
   constructor(logger:Logging, tibberApiKey:string, tibberQueryUrl:string, thresholdEur: number, thresholdTotalEur: number,
-    tibberLoadBatteryEnabled:boolean, tibberHomeId?: string){
+    tibberLoadBatteryEnabled:boolean, tibberDischargeDisabled:boolean, tibberHomeId?: string){
     this.config = {
       // Endpoint configuration
       apiEndpoint: {
@@ -39,6 +41,7 @@ export class TibberService {
     this.tibberLoadBatteryEnabled = tibberLoadBatteryEnabled;
     this.triggerdToday = undefined;
     this.thresholdTotalEur = thresholdTotalEur;
+    this.tibberDischargeDisabled = tibberDischargeDisabled; // stop discharging during tibber time
   }
 
   getLogger() : Logging{

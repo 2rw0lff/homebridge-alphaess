@@ -213,7 +213,17 @@
           "functionBody": "return model.tibberEnabled === true;"
         }
       },
-  
+    
+     "tibberDischargeDisabled": {
+        "title": "Disable Battery Discharge during tibber loading ",
+        "type": "boolean",
+        "required": true,
+        "default": true, 
+        "description":"During tibber charge, prevent discharge of the battery, to save battery life and money ",
+        "condition": {
+          "functionBody": "return model.tibberEnabled === true;"
+        }
+      },
       "triggerImageFilename": {
         "title": "Trigger Image Filename",
         "type": "string",
@@ -236,7 +246,9 @@
           "appid",
           "appsecret",
           "serialnumber",   
-          "refreshTimerInterval", 
+          "refreshTimerInterval",
+          "triggerImageFilename",  
+          "power_image_filename",       
           "logrequestdata"
       ]
   },
@@ -278,7 +290,8 @@
             "tibberLoadingMinutes",
             "tibberThresholdSOC",
             "tibberThresholdEur",
-            "tibberThresholdTotalEur"            
+            "tibberThresholdTotalEur",
+            "tibberDischargeDisabled"            
         ]
     }
   ]
