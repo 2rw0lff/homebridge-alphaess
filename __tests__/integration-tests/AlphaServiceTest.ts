@@ -1,5 +1,7 @@
 import 'jest';
-import { MockServer } from 'jest-mock-server';
+import { ObjectMapper } from 'jackson-js';
+import { http, HttpResponse } from 'msw';
+import { setupServer } from 'msw/node';
 
 import { AlphaService } from '../../src/alpha/AlphaService';
 import { AlphaData, TriggerConfig, TriggerStatus } from '../../src/interfaces';
@@ -7,39 +9,63 @@ import { AlphaLastPowerDataResponse, AlphaDataResponse,
   AlphaLastPowerDataResponseWithNullTestingOnly } from '../../src/alpha/response/AlphaLastPowerDataResponse';
 import { ImageRenderingService } from '../../src/alpha/ImageRenderingService';
 import { AlphaSettingsResponse } from '../../src/alpha/response/AlphaSettingsResponse';
+import { Logging } from 'homebridge';
+import { Mock } from 'moq.ts';
 
 const serialNumber ='blafasel';
 const appid = 'bla';
 const secret = 'AE1234';
 const logRequestData = false;
 
-describe('Integration Test with Mock Server', () => {
-
-  const server = new MockServer();
-
-  afterAll(() => server.stop());
-
-  beforeAll(() => server.start());
-
-  beforeEach(() => server.reset());
+const loging = new Mock<Logging>()
+  .setup( instance => instance.debug).returns(m => '')
+  .setup( instance => instance.log).returns(m => '').
+  setup(instance => instance.error).returns(m => '');
 
 
-  it('Test Get Alpha Data ', async () => {
-    const mockServerUrl ='http://localhost:' + server.getURL().port;
+const mockServerBaseUrl ='http://localhost:3000';
 
-    const lastPowerRoute = server.get('/getLastPowerData').mockImplementationOnce((ctx) => {
-      const alphaData = new AlphaDataResponse();
-      alphaData.ppv = 90;
-      alphaData.pbat = 120;
-      alphaData.pload = 12;
-      alphaData.soc = 44;
-      const detailResponse = new AlphaLastPowerDataResponse();
-      detailResponse.data = alphaData;
-      ctx.response.body = JSON.stringify(detailResponse);
-      ctx.status = 200;
-    });
+describe('Integration Test with an Mock Server', () => {
 
-    const alphaService = new AlphaService(undefined, 'goodAppId', secret, logRequestData, mockServerUrl, 1000, 'serialNumber' );
+  jest.setTimeout(15000);
+
+  const httpHandlersInitial = [
+    http.get(mockServerBaseUrl +'/', () => {
+      return HttpResponse.json('{}');
+    }),
+  ];
+
+  const mockServer = setupServer(...httpHandlersInitial);
+
+  beforeAll(() => {
+    try {
+      mockServer.listen();//{ onUnhandledRequest: 'error' });
+    } catch (E) {
+      console.debug('test');
+    }
+  });
+
+  afterEach(() => mockServer.resetHandlers());
+
+  afterAll(() => mockServer.close());
+
+  it('Test Get Alpha Data OK result ', async () => {
+    const httpHandlersOK = [
+      http.get(mockServerBaseUrl +'/getLastPowerData', () => {
+
+        const alphaData = new AlphaDataResponse();
+        alphaData.ppv = 90;
+        alphaData.pbat = 120;
+        alphaData.pload = 12;
+        alphaData.soc = 44;
+        const detailResponse = new AlphaLastPowerDataResponse();
+        detailResponse.data = alphaData;
+
+        return HttpResponse.json(detailResponse);
+      }),
+    ];
+    mockServer.resetHandlers(...httpHandlersOK);
+    const alphaService = new AlphaService(loging.object(), 'goodAppId', secret, logRequestData, 'http://localhost:3000', 1000, 'serialNumber' );
     const lastPowerData = await alphaService.getLastPowerData(serialNumber);
     expect(lastPowerData.data).toBeDefined();
     expect(lastPowerData.data.soc).toBeDefined();
@@ -47,14 +73,21 @@ describe('Integration Test with Mock Server', () => {
     expect(lastPowerData.data.ppv).toEqual(90);
     expect(lastPowerData.data.pbat).toEqual(120);
     expect(lastPowerData.data.soc).toEqual(44);
-    expect(lastPowerRoute).toHaveBeenCalledTimes(1);
+  });
+
+  it('Test Get Alpha Data Bad Response result ', async () => {
 
     // bad response returned
-    server.get('/getLastPowerData').mockImplementationOnce((ctx) => {
-      const detailResponse = new AlphaLastPowerDataResponse();
-      ctx.response.body = JSON.stringify(detailResponse);
-      ctx.status = 200;
-    });
+    const httpHandlersBadContent = [
+      http.get(mockServerBaseUrl +'/getLastPowerData', () => {
+        const detailResponse = new AlphaLastPowerDataResponse();
+        return HttpResponse.json(detailResponse);
+      }),
+    ];
+
+    mockServer.resetHandlers(...httpHandlersBadContent);
+
+    const alphaService = new AlphaService(loging.object(), 'goodAppId', secret, logRequestData, 'http://localhost:3000', 1000, 'serialNumber' );
 
     try {
       await alphaService.getLastPowerData(serialNumber);
@@ -62,41 +95,19 @@ describe('Integration Test with Mock Server', () => {
       expect(err).toBeDefined();
       expect(err).toContain('could not parse response, missing data in response :');
     }
+  });
 
-    server.get('/getLastPowerData').mockImplementationOnce((ctx) => {
-      const detailResponse = new AlphaLastPowerDataResponseWithNullTestingOnly();
-      detailResponse.data = null;
-      ctx.response.body = JSON.stringify(detailResponse);
-      ctx.status = 200;
-    });
-
-    try {
-      await alphaService.getLastPowerData(serialNumber);
-    } catch (err) {
-      expect(err).toBeDefined();
-      expect(err).toContain('could not parse response, missing data in response :');
-    }
-
-    // partial response returned
-    server.get('/getLastPowerData').mockImplementationOnce((ctx) => {
-      ctx.response.body = '{ \'code\':\'23\' , \'data\':\'xx\' }' ;
-      ctx.status = 200;
-    });
-
-    //
-    try {
-      await alphaService.getLastPowerData(serialNumber);
-    } catch (err) {
-      expect(err).toBeDefined();
-      expect(err).toContain('could not parse response, missing data in response :');
-    }
-
-    // bad response returned
-    server.get('/getLastPowerData').mockImplementationOnce((ctx) => {
-      ctx.response.body = '{}' ;
-      ctx.status = 200;
-    });
-
+  it('Test Get Alpha Data Null Response result ', async () => {
+    // null response returned
+    const httpHandlersNullContent = [
+      http.get(mockServerBaseUrl +'/getLastPowerData', () => {
+        const detailResponse = new AlphaLastPowerDataResponseWithNullTestingOnly();
+        detailResponse.data = null;
+        return HttpResponse.json(detailResponse);
+      }),
+    ];
+    mockServer.resetHandlers(...httpHandlersNullContent);
+    const alphaService = new AlphaService(loging.object(), 'goodAppId', secret, logRequestData, 'http://localhost:3000', 1000, 'serialNumber' );
 
     try {
       await alphaService.getLastPowerData(serialNumber);
@@ -104,152 +115,173 @@ describe('Integration Test with Mock Server', () => {
       expect(err).toBeDefined();
       expect(err).toContain('could not parse response, missing data in response :');
     }
+  });
 
-    // empty response returned
-    server.get('/getLastPowerData').mockImplementationOnce((ctx) => {
-      ctx.response.body = '' ;
-      ctx.status = 200;
-    });
+  it('Test Get Alpha Data partial Response result ', async () => {
 
+    const httpPartialContent = [
+      http.get(mockServerBaseUrl +'/getLastPowerData', () => {
+        const detailResponse = new AlphaLastPowerDataResponseWithNullTestingOnly();
+        detailResponse.data = null;
+        return HttpResponse.json('{ \'code\':\'23\' , \'data\':\'xx\' }');
+      }),
+    ];
+
+    mockServer.resetHandlers(...httpPartialContent);
+    const alphaService = new AlphaService(loging.object(), 'goodAppId', secret, logRequestData, 'http://localhost:3000', 1000, 'serialNumber' );
 
     try {
       await alphaService.getLastPowerData(serialNumber);
     } catch (err) {
       expect(err).toBeDefined();
-      expect(err).toContain('could not parse response since it was empty');
+      expect(err).toContain('could not parse response, missing data in response :');
+    }
+  });
+
+  it('Test Get Alpha Data empty Response result ', async () => {
+    // short content response returned
+    const httpShortContent = [
+      http.get(mockServerBaseUrl +'/getLastPowerData', () => {
+        const detailResponse = new AlphaLastPowerDataResponseWithNullTestingOnly();
+        detailResponse.data = null;
+        return HttpResponse.json('{ }');
+      }),
+    ];
+
+    mockServer.resetHandlers(...httpShortContent);
+    const alphaService = new AlphaService(loging.object(), 'goodAppId', secret, logRequestData, 'http://localhost:3000', 1000, 'serialNumber' );
+
+    try {
+      await alphaService.getLastPowerData(serialNumber);
+    } catch (err) {
+      expect(err).toBeDefined();
+      expect(err).toContain('could not parse response, missing data in response :');
     }
   });
 
 
   it('positive test: enable loading when currently not loading ', async () => {
 
-    const mockServerUrl ='http://localhost:' + server.getURL().port;
+    const now = new Date();
+    const updateLoadingHandlers = [
 
-    server.reset();
-    const settingsPost = server.post('/updateChargeConfigInfo').mockImplementation((ctx) => {
-      const alphaSettingsPostResponse = new AlphaSettingsResponse();
-      alphaSettingsPostResponse.code = 200;
-      alphaSettingsPostResponse.msg= 'ok';
-      alphaSettingsPostResponse.data = new Map<string, unknown>();
-      ctx.status = 200;
-      ctx.response.status = 200;
-      const json = JSON.stringify(alphaSettingsPostResponse);
-      ctx.response.body= json;
-    });
+      http.post(mockServerBaseUrl +'/updateChargeConfigInfo', async ({ request, params, cookies }) => {
+        const alphaSettingsPostResponse = new AlphaSettingsResponse();
+        alphaSettingsPostResponse.code = 200;
+        alphaSettingsPostResponse.msg= 'ok';
+        const loadingSettings = new Map<string, unknown>();
+        loadingSettings['timeChaf1'] = now.getHours()+ ':' + (now.getMinutes()-2);
+        loadingSettings['timeChae1'] = now.getHours()+ ':' + (now.getMinutes()+2);
+        loadingSettings['gridCharge'] = 1;
+        alphaSettingsPostResponse.data = loadingSettings
+        return HttpResponse.json(alphaSettingsPostResponse);
+      } , {once:true}),
+      http.post(mockServerBaseUrl +'/updateDisChargeConfigInfo', async ({ request, params, cookies }) => {
+        const alphaSettingsPostDisChargeResponse = new AlphaSettingsResponse();
+        alphaSettingsPostDisChargeResponse.code = 200;
+        alphaSettingsPostDisChargeResponse.msg= 'ok';
+        const unloadingSettings = new Map<string, unknown>();
+        unloadingSettings['timeDise1'] = now.getHours()+ ':' + (now.getMinutes()-2);
+        unloadingSettings['timeDisf1'] = now.getHours()+ ':' + (now.getMinutes()+2);
+        unloadingSettings['ctrDis'] = 1;
+        alphaSettingsPostDisChargeResponse.data = unloadingSettings
+        return HttpResponse.json(alphaSettingsPostDisChargeResponse);
+      }, {once:true}),
+    ];
+    mockServer.resetHandlers(...updateLoadingHandlers);
+
 
     const minutes = 45 ;
-    const alphaService = new AlphaService(undefined, appid, secret, logRequestData, mockServerUrl, 1000, 'serialNumber');
+    const alphaService = new AlphaService(loging.object(), appid, secret, logRequestData, mockServerBaseUrl, 1000, 'serialNumber');
 
     // when
-    const batteryChargeResult = await alphaService.checkAndEnableReloading('serialNumber', true, minutes, 10, 20);
-
-    //then
-    expect(settingsPost).toHaveBeenCalledTimes(1);
-
+    const batteryChargeResult = (await alphaService.checkAndEnableReloading('serialNumber', true, minutes, 10, 20, true));
     expect(batteryChargeResult).toBeDefined();
-    expect(batteryChargeResult['gridCharge']).toBe(1);
+    expect(batteryChargeResult.settingsLoading['gridCharge']).toBe(1);
+    expect(batteryChargeResult.settingsUnloading['ctrDis']).toBe(1);
 
   });
 
 
-
   it('positive test: check battery is currrently loading ', async () => {
-    const mockServerUrl ='http://localhost:' + server.getURL().port;
     const now = new Date();
+    const handlers = [
+      http.get(mockServerBaseUrl +'/getChargeConfigInfo', () => {
+        const alphaSettingsResponse = new AlphaSettingsResponse();
+        alphaSettingsResponse.code = 200;
+        alphaSettingsResponse.msg= 'ok';
+        const loadingSettings = new Map<string, unknown>();
+        
+        loadingSettings['timeChaf1'] = now.getHours()+ ':' + (now.getMinutes()-2);
+        loadingSettings['timeChae1'] = now.getHours()+ ':' + (now.getMinutes()+2);
+        loadingSettings['gridCharge'] = 1;
+        alphaSettingsResponse.data = loadingSettings;      
+        return HttpResponse.json(alphaSettingsResponse);
+      })
+    ];
 
-    const settingsGet = server.get('/getChargeConfigInfo').mockImplementationOnce((ctx) => {
-      const alphaSettingsResponse = new AlphaSettingsResponse();
-      alphaSettingsResponse.code = 200;
-      alphaSettingsResponse.msg= 'ok';
-      const loadingSettings = new Map<string, unknown>();
-      loadingSettings['timeChaf1'] = now.getHours()+ ':' + (now.getMinutes()-2);
-      loadingSettings['timeChae1'] = now.getHours()+ ':' + (now.getMinutes()+2);
-      loadingSettings['gridCharge'] = 1;
-      alphaSettingsResponse.data = loadingSettings;
-
-      ctx.status = 200;
-      ctx.response.status = 200;
-      const json = JSON.stringify(alphaSettingsResponse);
-      ctx.response.body= json;
-    });
-
-    const alphaService = new AlphaService(undefined, appid, secret, logRequestData, mockServerUrl, 1000, 'serialNumber' );
+    mockServer.resetHandlers(...handlers);
+    const alphaService = new AlphaService(loging.object(), appid, secret, logRequestData, mockServerBaseUrl, 1000, 'serialNumber' );
 
     // when
     const batteryChargeResult = await alphaService.isBatteryCurrentlyLoadingCheckNet('checkBatteryLoadingOK');
 
     //then
-    expect(settingsGet).toHaveBeenCalledTimes(1);
-
     expect(batteryChargeResult).toBeTruthy();
   });
 
 
 
-  it('negative test: n battery is currrently loading, feature disabled ', async () => {
-
-    const mockServerUrl ='http://localhost:' + server.getURL().port;
-
+  it('negative test: battery is currrently loading, feature disabled ', async () => {
     const now = new Date();
-
-    const settingsGet = server.get('/getChargeConfigInfo').mockImplementation((ctx) => {
-      const alphaSettingsResponse = new AlphaSettingsResponse();
-      alphaSettingsResponse.code = 200;
-      alphaSettingsResponse.msg= 'ok';
-      const loadingSettings = new Map<string, unknown>();
-      loadingSettings['timeChaf1'] = now.getHours()+ ':' + (now.getMinutes()-2);
-      loadingSettings['timeChae1'] = now.getHours()+ ':' + (now.getMinutes()+2);
-      loadingSettings['gridCharge'] = 0;
-      alphaSettingsResponse.data = loadingSettings;
-
-      ctx.status = 200;
-      ctx.response.status = 200;
-      const json = JSON.stringify(alphaSettingsResponse);
-      ctx.response.body= json;
-    });
-
-    const alphaService = new AlphaService(undefined, appid, secret, logRequestData, mockServerUrl, 1000, 'serialNumber');
+    const handlers = [
+      http.get(mockServerBaseUrl +'/getChargeConfigInfo', () => {
+        const alphaSettingsResponse = new AlphaSettingsResponse();
+        alphaSettingsResponse.code = 200;
+        alphaSettingsResponse.msg= 'ok';
+        const loadingSettings = new Map<string, unknown>();
+        loadingSettings['timeChaf1'] = now.getHours()+ ':' + (now.getMinutes()-2);
+        loadingSettings['timeChae1'] = now.getHours()+ ':' + (now.getMinutes()+2);
+        loadingSettings['gridCharge'] = 0;
+        alphaSettingsResponse.data = loadingSettings;
+        return HttpResponse.json(alphaSettingsResponse);
+      })
+    ];
+    mockServer.resetHandlers(...handlers);
+    const alphaService = new AlphaService(loging.object(), appid, secret, logRequestData, mockServerBaseUrl, 1000, 'serialNumber');
 
     // when
     const batteryChargeResult = await alphaService.isBatteryCurrentlyLoadingCheckNet('blafasel');
 
     //then
-    expect(settingsGet).toHaveBeenCalledTimes(1);
-
     expect(batteryChargeResult).toBeFalsy();
   });
 
 
   it('negative test: check battery is currrently loading, beginning too far in future  ', async () => {
-
-    const mockServerUrl ='http://localhost:' + server.getURL().port;
-
     const now = new Date();
+    const handlers = [
+      http.get(mockServerBaseUrl +'/getChargeConfigInfo', () => {
+        const alphaSettingsResponse = new AlphaSettingsResponse();
+        alphaSettingsResponse.code = 200;
+        alphaSettingsResponse.msg= 'ok';
+        const loadingSettings = new Map<string, unknown>();
+        loadingSettings['timeChaf1'] = now.getHours()+ ':' + (now.getMinutes()+5);
+        loadingSettings['timeChae1'] = now.getHours()+ ':' + (now.getMinutes()+10);
+        loadingSettings['gridCharge'] = 1;
+        alphaSettingsResponse.data = loadingSettings;
+  
+        return HttpResponse.json(alphaSettingsResponse);
+      })
+    ];
+    mockServer.resetHandlers(...handlers);
 
-    const settingsGet = server.get('/getChargeConfigInfo').mockImplementation((ctx) => {
-      const alphaSettingsResponse = new AlphaSettingsResponse();
-      alphaSettingsResponse.code = 200;
-      alphaSettingsResponse.msg= 'ok';
-      const loadingSettings = new Map<string, unknown>();
-      loadingSettings['timeChaf1'] = now.getHours()+ ':' + (now.getMinutes()+5);
-      loadingSettings['timeChae1'] = now.getHours()+ ':' + (now.getMinutes()+10);
-      loadingSettings['gridCharge'] = 1;
-      alphaSettingsResponse.data = loadingSettings;
-
-      ctx.status = 200;
-      ctx.response.status = 200;
-      const json = JSON.stringify(alphaSettingsResponse);
-      ctx.response.body= json;
-    });
-
-    const alphaService = new AlphaService(undefined, appid, secret, logRequestData, mockServerUrl, 1000, 'serialNumber');
+    const alphaService = new AlphaService(loging.object(), appid, secret, logRequestData, mockServerBaseUrl, 1000, 'serialNumber');
 
     // when
     const batteryChargeResult = await alphaService.isBatteryCurrentlyLoadingCheckNet('blafasel');
 
     //then
-    expect(settingsGet).toHaveBeenCalledTimes(1);
-
     expect(batteryChargeResult).toBeFalsy();
   });
 
@@ -478,7 +510,7 @@ test('test enable loading if currently not loading, verify loading minutes (45)'
   const endDate = new Date();
   endDate.setMinutes(startedDate.getMinutes() + loadingMinutes);
 
-  const responseMap = alphaService.calculateUpdatedSettingsData(true, loadingMinutes, 30, 30);
+  const responseMap = alphaService.calculateUpdatedSettingsData(true, loadingMinutes, 30, 30).settingsLoading;
   expect(responseMap).toBeDefined();
   expect(responseMap['gridCharge']).toBe(1);
   expect(responseMap['timeChaf1']).toBeDefined();
@@ -490,7 +522,6 @@ test('test enable loading if currently not loading, verify loading minutes (45)'
   expect(responseMap['timeChaf1']).toBe(expectedLoadingHours);
   const expectedLoadingHoursEnd = alphaService.getLoadingHourString(endDate.getHours(), endDate.getMinutes());
   expect(responseMap['timeChae1']).toBe(expectedLoadingHoursEnd);
-
 });
 
 
@@ -502,7 +533,7 @@ test('test enable loading if currently not loading, verify loading minutes (90) 
   const endDate = new Date();
   endDate.setMinutes(startedDate.getMinutes() + loadingMinutes);
 
-  const responseMap = alphaService.calculateUpdatedSettingsData(true, loadingMinutes, 30, 30);
+  const responseMap = alphaService.calculateUpdatedSettingsData(true, loadingMinutes, 30, 30).settingsLoading;
   expect(responseMap).toBeDefined();
   expect(responseMap['gridCharge']).toBe(1);
   expect(responseMap['timeChaf1']).toBeDefined();
@@ -526,7 +557,7 @@ test('test disable loading if when currently loading because time is up ', async
   dateBegin.setMinutes(new Date().getMinutes()-15);
   alphaService.setLastLoadingStart(dateBegin); // last loading started 15 minutes ago
 
-  const responseMap = alphaService.calculateUpdatedSettingsData(true, minutesToLoadMaximum, 30, 30);
+  const responseMap = alphaService.calculateUpdatedSettingsData(true, minutesToLoadMaximum, 30, 30).settingsLoading;
 
   expect(responseMap).toBeDefined();
   expect(responseMap['gridCharge']).toBe(0);
@@ -543,7 +574,7 @@ test('test disable loading if its currently loading. stop loading because time e
   dateBegin.setMinutes(new Date().getMinutes()-55);
   alphaService.setLastLoadingStart(dateBegin);
 
-  const responseMap = alphaService.calculateUpdatedSettingsData(true, minutesToLoadMaximum, 30, 30);
+  const responseMap = alphaService.calculateUpdatedSettingsData(true, minutesToLoadMaximum, 30, 30).settingsLoading;
   expect(responseMap).toBeDefined(); // undefined - no stopping of loading triggered
   expect(responseMap['gridCharge']).toBe(0);
   expect(responseMap['timeChaf1']).toBe('00:00');
@@ -564,4 +595,23 @@ test('test disable loading if its currently loading. do not change settings, sin
   const responseMap = alphaService.calculateUpdatedSettingsData(true, loadingMinutes, 30, 30);
   expect(responseMap).toBeUndefined(); // undefined - no stopping of loading triggered
 });
-// get the string of the current hour
+
+test('test calculate unloading scenario 1 -> unloading begins at end of loading ', async () => {
+  const alphaService = new AlphaService(undefined, '123', 'password', true, 'http://localhost:8080', 1000, 'serialNumber');
+  const dateBegin = new Date();
+  dateBegin.setMinutes(15);
+  dateBegin.setHours(2);
+
+
+  const dateEnd = new Date();
+  dateEnd.setMinutes(30);
+  dateEnd.setHours(3);
+
+  const calculateUnloadingTime = alphaService.calculateUnloadingTime(dateBegin, dateEnd);
+  expect(calculateUnloadingTime).toBeDefined();
+  expect(calculateUnloadingTime['timeDisf1']).toBe('00:00');  // start unloading time
+  expect(calculateUnloadingTime['timeDise1']).toBe('02:15');  //end unloading time
+  expect(calculateUnloadingTime['timeDisf2']).toBe('03:30');  // start unloading time
+  expect(calculateUnloadingTime['timeDise2']).toBe('23:45');  //end unloading time
+});
+

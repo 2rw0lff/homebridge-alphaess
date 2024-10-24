@@ -80,7 +80,7 @@ export class TriggerConfig {
 export class SettingsData{
   settingsUnloading: Map<string, unknown>;
   settingsLoading: Map<string, unknown>;
-  constructor(settingsUnloading, settingsLoading){
+  constructor(settingsLoading, settingsUnloading){
     this.settingsLoading = settingsLoading;
     this.settingsUnloading = settingsUnloading;
   }

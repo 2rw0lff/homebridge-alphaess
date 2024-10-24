@@ -4,12 +4,12 @@ import crypto from 'crypto';
 import { AlphaLastPowerDataResponse } from './response/AlphaLastPowerDataResponse';
 import { ObjectMapper } from 'jackson-js';
 import { AlphaSettingsResponse } from './response/AlphaSettingsResponse';
-import { AlphaData, AlphaServiceEventListener, TriggerConfig, TriggerStatus } from '../interfaces';
+import { AlphaData, AlphaServiceEventListener, TriggerConfig, TriggerStatus, SettingsData } from '../interfaces';
 import { Utils } from '../util/Utils';
-
 const request = require('request');
 
 // see https://github.com/CharlesGillanders/alphaess
+// https://open.alphaess.com/developmentManagement/apiList
 
 export class AlphaService {
   private logger: Logging;
@@ -83,24 +83,42 @@ export class AlphaService {
 
   }
 
-  // check if current loading of battery makes sense, and if so trigger it
+  // check if current loading of battery makes sense, and if so trigger it via api call
   async checkAndEnableReloading(serialNumber:string, priceIsLow : boolean, numberOfMinutes:number,
-    socBattery:number, socLowerThreshold:number):
-    Promise <Map<string, unknown>> {
+    socBattery:number, socLowerThreshold:number, disableUnloadingDuringLoadingWithNet:boolean):
+    Promise <SettingsData> {
 
     const updateSettingsData = this.calculateUpdatedSettingsData(priceIsLow,
       numberOfMinutes, socBattery, socLowerThreshold);
 
-    // update settings needed
+    // update settings needed ? then take action
     if (updateSettingsData!==undefined){
+
       // update required, either load or unload battery
-      await this.setAlphaSettings(serialNumber, updateSettingsData).catch(() => {
-        if (updateSettingsData['gridCharge'] === 1){ // try to load
+      await this.setAlphaSettingsCharge(serialNumber, updateSettingsData.settingsLoading).then( async () => {
+
+        // shall we also set unloading timeframe ?
+        if (disableUnloadingDuringLoadingWithNet){
+          // start load, set unloading frame
+          if (updateSettingsData.settingsLoading['gridCharge'] === 1){
+            //then            
+              await this.setAlphaSettingsDisCharge(serialNumber, updateSettingsData.settingsUnloading).catch( (error) => {
+                throw new Error('could not set update battery not loading time ' + error);
+              });
+          }
+
+          // stop load, erase existing unloading time frame
+          if (updateSettingsData.settingsLoading['gridCharge'] === 0){
+              this.stopUnloading(serialNumber);          
+          }
+        }
+      }).catch(() => {
+        if (updateSettingsData.settingsLoading['gridCharge'] === 1){ // try to load
           this.setLastLoadingStart(undefined); // mark as not loading, try again later
           throw new Error('could not set update battery loading ');
         }
 
-        if (updateSettingsData['gridCharge'] === 0){ // try to unload
+        if (updateSettingsData.settingsLoading['gridCharge'] === 0){ // try to unload
           this.setLastLoadingStart(undefined); // mark as not loading
           throw new Error('could not set update battery loading ');
         }
@@ -116,7 +134,7 @@ export class AlphaService {
   // calculate loading settings: if currently loading
   async isBatteryCurrentlyLoadingCheckNet(serialNumber:string) : Promise<boolean> {
 
-    const alphaSettingsResponse = await this.getSettingsData(serialNumber).catch( (error) => {
+    const alphaSettingsResponse = await this.getSettingsData(serialNumber).catch( () => {
       throw new Error('could not fetch settings data to check if battery currently loading for serial number: ' + serialNumber);
     });
 
@@ -141,21 +159,17 @@ export class AlphaService {
     endDate.setSeconds(0);
 
     const loadingFeatureSet = settings['gridCharge'] === 1;
-
     const now = new Date();
-
     const afterNow = now.getTime() > startDate.getTime();
     const beforeEnd = now.getTime() < endDate.getTime();
     const isCurrentlyLoadingFromNet = loadingFeatureSet && afterNow && beforeEnd;
 
     this.logMsg('isCurrentlyLoadingfromNet: ' + isCurrentlyLoadingFromNet + ' for serial number: ' + serialNumber);
-
     return isCurrentlyLoadingFromNet;
   }
 
   // calculate loading settings: if currently loading, continue, else disable loading trigger
   isBatteryCurrentlyLoading(): boolean {
-
     if (this.lastLoadingStart!==undefined) {
       return new Date() > this.lastLoadingStart;
     }
@@ -164,26 +178,28 @@ export class AlphaService {
 
   // hard reset loading
   async stopLoading(serialNumber:string){
-    const newSettingsData = new Map<string, unknown> ();
+    const newSettingsData = this.getDefautLoadingSettings();
     newSettingsData['gridCharge'] = 0;
-    newSettingsData['timeChaf1'] = '00:00';
-    newSettingsData['timeChae1'] = '00:00';
-    newSettingsData['timeChaf2'] = '00:00';
-    newSettingsData['timeChae2'] = '00:00';
-
-    await this.setAlphaSettings(serialNumber, newSettingsData).catch((error) => {
+    await this.setAlphaSettingsCharge(serialNumber, newSettingsData).catch((error) => {
       this.setLastLoadingStart(undefined); // mark as not loading
-      this.logMsg('could not finish loading :' + error);
+      this.logMsg('could not clear loading settings :' + error);
     });
   }
 
+  // hard reset unloading settingss
+  async stopUnloading(serialNumber:string){
+    const newSettingsData = this.getDefaultUnloadingSettings();
+    newSettingsData['gridCharge'] = 0;
+    await this.setAlphaSettingsDisCharge(serialNumber, newSettingsData).catch((error) => {
+      this.logMsg('could not clear unloading settings' + error);
+    });
+  }
+
+
   // calculate loading settings: if currently loading, continue, else disable loading trigger
   calculateUpdatedSettingsData(priceIsLow : boolean, loadingMinutes:number,
-    socBattery:number, socLowerThreshold:number):
-     Map<string, unknown> {
-    const newSettingsData = new Map<string, unknown> ();
+    socBattery:number, socLowerThreshold:number): SettingsData {
     const batteryLow = socBattery <= socLowerThreshold ;
-
 
     // add loading minutes to planned end time
     let timeToStartLoading = false;
@@ -194,7 +210,8 @@ export class AlphaService {
       const lastLoadingStartMillis = this.lastLoadingStart.getTime();
       const minLoadingMillis = loadingMinutes * 1000 * 60;
       loadingShallEndByTime = new Date().getTime() > (lastLoadingStartMillis + minLoadingMillis);
-      this.logMsg('lastLoadingStartMillis: ' + lastLoadingStartMillis + ' minLoadingMillis:' + minLoadingMillis + ' loadingShallEndByTime: ' + loadingShallEndByTime);
+      this.logMsg('lastLoadingStartMillis: ' + lastLoadingStartMillis + ' minLoadingMillis:' + minLoadingMillis +
+         ' loadingShallEndByTime: ' + loadingShallEndByTime);
     } else {
       timeToStartLoading = true;
       this.logMsg('timeToStartLoading: ' + timeToStartLoading);
@@ -219,7 +236,11 @@ export class AlphaService {
         newSettingsData['timeChaf2'] = '00:00';
         newSettingsData['timeChae2'] = '00:00';
         this.logMsg('currently not loading detected, enable it via api ');
-        return newSettingsData;
+
+        // if we shall stop unloading during that time ? set this also
+        const unloadingSettings = this.calculateUnloadingTime(now, newEndDate);
+        unloadingSettings['ctrDis'] = 1;
+        return new SettingsData(newSettingsData, unloadingSettings);
       }
     }
 
@@ -228,16 +249,43 @@ export class AlphaService {
       this.lastLoadingStart = undefined;
       this.logMsg('loading shall stop now, disable it now');
       // disable loading, set default time values
-      newSettingsData['gridCharge'] = 0;
-      newSettingsData['timeChaf1'] = '00:00';
-      newSettingsData['timeChae1'] = '00:00';
-      newSettingsData['timeChaf2'] = '00:00';
-      newSettingsData['timeChae2'] = '00:00';
-      return newSettingsData;
+      const settingsLoading = this.getDefautLoadingSettings();
+      settingsLoading['gridCharge'] = 0;
+      return new SettingsData(settingsLoading, this.getDefaultUnloadingSettings());
     }
     return undefined;
   }
 
+  getDefautLoadingSettings() {
+    const newSettingsData = new Map<string, unknown>();
+    newSettingsData['timeChaf1'] = '00:00';
+    newSettingsData['timeChae1'] = '00:00';
+    newSettingsData['timeChaf2'] = '00:00';
+    newSettingsData['timeChae2'] = '00:00';
+    return newSettingsData;
+  }
+
+  getDefaultUnloadingSettings() {
+    const unchargeSettingsData = new Map<string, unknown>();
+    unchargeSettingsData['ctrDis'] = 0;
+    unchargeSettingsData['timeDise1'] = '00:00';
+    unchargeSettingsData['timeDise2'] = '00:00';
+    unchargeSettingsData['timeDisf1'] = '00:00';
+    unchargeSettingsData['timeDisf2'] = '00:00';
+    return unchargeSettingsData;
+  }
+
+  calculateUnloadingTime(begin: Date, end:Date){
+    // the xor of the loading time during the day
+    const unchargeSettingsData = this.getDefaultUnloadingSettings();
+
+    unchargeSettingsData['timeDisf1'] = '00:00'; // start unloading time 1
+    unchargeSettingsData['timeDise1'] = this.getLoadingHourString(begin.getHours(), begin.getMinutes()); // end unloading time
+
+    unchargeSettingsData['timeDisf2'] = this.getLoadingHourString(end.getHours(), end.getMinutes()); //start unloading time 2
+    unchargeSettingsData['timeDise2'] = '23:45'; // end unloading time
+    return unchargeSettingsData;
+  }
 
   // next quarter loading time
   getLoadingHourString(hour:number, minute:number ): string {
@@ -266,14 +314,37 @@ export class AlphaService {
     return hourString + minuteString;
   }
 
-  async setAlphaSettings(serialNumber:string, alphaSettingsData:Map<string, unknown> ): Promise<boolean>{
-    const authtimestamp = Math.round(new Date().getTime() / 1000).toString();
-    const authsignature = this.getSignature(authtimestamp);
-    let timeChae1 = alphaSettingsData['timeChae1'];
-    let timeChae2 = alphaSettingsData['timeChae2'];
-    let timeChaf1 = alphaSettingsData['timeChaf1'];
-    let timeChaf2 = alphaSettingsData['timeChaf2'];
-    alphaSettingsData['sysSn'] = serialNumber;
+  // set discharge time
+  async setAlphaSettingsDisCharge(serialNumber:string, alphaSettingsData:Map<string, unknown>): Promise<boolean>{
+    let end1 = alphaSettingsData['timeDise1'];// end unloading 1
+    let end2 = alphaSettingsData['timeDise2']; // end unloading 2s
+    let start1 = alphaSettingsData['timeDisf1']; // start unloading
+    let start2 = alphaSettingsData['timeDisf2']; // start unloading2
+
+    if (end1===undefined){
+      end1='00:00';
+      alphaSettingsData['timeDise1'] = end1;
+    }
+    if (end2===undefined){
+      end2='00:00';
+      alphaSettingsData['timeDise2'] = end2;
+    }
+    if (start1===undefined){
+      start1='00:00';
+      alphaSettingsData['timeDisf1'] = start1;
+    }
+    if (start2===undefined){
+      start2='00:00';
+      alphaSettingsData['timeDisf2'] = start2;
+    }
+    return this.setAlphaSettings(serialNumber, '/updateDisChargeConfigInfo', alphaSettingsData);
+  }
+
+  async setAlphaSettingsCharge(serialNumber:string, alphaSettingsData:Map<string, unknown>): Promise<boolean>{
+    let timeChae1 = alphaSettingsData['timeChae1']; // end loading 1
+    const timeChae2 = alphaSettingsData['timeChae2']; // end loading 2
+    let timeChaf1 = alphaSettingsData['timeChaf1']; // start loading 1
+    let timeChaf2 = alphaSettingsData['timeChaf2']; //start loading 2
 
     if (timeChaf2===undefined){
       timeChaf2='00:00';
@@ -289,10 +360,14 @@ export class AlphaService {
     }
     if (timeChae2===undefined){
       alphaSettingsData['timeChae2'] = timeChae2;
-      timeChae2='00:00';
     }
+    return this.setAlphaSettings(serialNumber, '/updateChargeConfigInfo', alphaSettingsData);
+  }
 
-    const urlPart = '/updateChargeConfigInfo';
+  async setAlphaSettings(serialNumber:string, urlPart: string, alphaSettingsData:Map<string, unknown>): Promise<boolean>{
+    const authtimestamp = Math.round(new Date().getTime() / 1000).toString();
+    const authsignature = this.getSignature(authtimestamp);
+    alphaSettingsData['sysSn'] = serialNumber;
     const url = this.baseUrl + urlPart;
     if (this.logRequestDetails) {
       this.logRequestData(authsignature, authtimestamp, url, '', '', serialNumber);
@@ -314,7 +389,7 @@ export class AlphaService {
     };
 
     if (this.logRequestDetails) {
-      this.logMsg('Set battery loading data: ' +JSON.stringify(req));
+      this.logMsg('Set battery loading/unloading data: ' +JSON.stringify(req));
     }
 
     return new Promise((resolve, reject) => {
@@ -329,13 +404,17 @@ export class AlphaService {
             return resolve(false);
           }
         } else {
-          this.logMsg('error loading/unloading: response code : ' + response + ', error: ' + error );
+          this.logMsg('error loading/unloading: response code : ' + response + ', error: ' + error + ' urlpart:' + urlPart );
           return reject(false);
         }
       },
       );
     });
   }
+
+
+
+
 
 
   async getSettingsData(serialNumber:string): Promise<AlphaSettingsResponse> {
@@ -555,7 +634,7 @@ export class AlphaService {
   private logMsg(message) {
     if (this.logger !== undefined && this.logger !== null ) {
       this.logger.debug(message);
-    } else {
+    }else {
       console.log('%s', message);
     }
   }

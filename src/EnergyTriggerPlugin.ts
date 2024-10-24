@@ -34,6 +34,7 @@ export class EnergyTriggerPlugin extends BasePlugin {
   private isBatteryLoadingFromNet = false;
   private tibberLoadingMinutes: number;
   private dailyLoadingFromNetReset : boolean;
+  private disableBatteryUnloading : boolean; // battery unloading stopped during loading with tibber
 
   private triggerConfig: TriggerConfig;
 
@@ -59,6 +60,7 @@ export class EnergyTriggerPlugin extends BasePlugin {
     this.tibberLoadingMinutes = config.tibberLoadingMinutes;
     this.triggerImageFilename = config.triggerImageFilename;
     this.tibberThresholdSOC = config.tibberThresholdSOC;
+    this.disableBatteryUnloading = config.disableBatteryUnloading;
 
     this.triggerConfig = new TriggerConfig(
       this.config.powerLoadingThreshold,
@@ -204,7 +206,8 @@ export class EnergyTriggerPlugin extends BasePlugin {
         priceIsLow,
         this.tibberLoadingMinutes,
         socBattery,
-        socBatteryThreshold).then(
+        socBatteryThreshold,
+        this.config.disableBatteryUnloading).then(
         () => {
           this.getLOG().debug('Check reloading if battery from net was done.');
         },

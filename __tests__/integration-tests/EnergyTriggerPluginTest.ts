@@ -2,9 +2,9 @@ import 'jest';
 import { AlphaService, EnergyTriggerPlugin, TibberService } from '../../src/index';
 import { Logging } from 'homebridge';
 import { PlatformConfig} from 'homebridge';
-import { Mock, Times, It, GetPropertyExpression, SetPropertyExpression, NewOperatorExpression } from 'moq.ts';
+import { Mock, Times, It, GetPropertyExpression, SetPropertyExpression } from 'moq.ts';
 import { API } from 'homebridge';
-import { PriceTrigger } from '../../src/interfaces';
+import { PriceTrigger, SettingsData } from '../../src/interfaces';
 import { IPrice } from 'tibber-api/lib/src/models/IPrice';
 import { PriceLevel } from 'tibber-api/lib/src/models/enums/PriceLevel';
 import { AlphaDataResponse, AlphaLastPowerDataResponse } from '../../src/alpha/response/AlphaLastPowerDataResponse';
@@ -187,7 +187,7 @@ test('test trigger tibber service via energy plugin -  expect stop battery loadi
   const alphaService = new Mock<AlphaService>()
     .setup( instance => instance.addListener).returns( () => undefined)
     .setup( instance => instance.getLastPowerData). returns(() => alphaDetailResp )
-    .setup( instance => instance.checkAndEnableReloading). returns(() => new Promise<Map<string, undefined>>((resolve => undefined)))
+    .setup( instance => instance.checkAndEnableReloading). returns(() => new Promise<SettingsData>((resolve => undefined)))
     .setup( instance => instance.isBatteryCurrentlyLoading). returns(() => false)
     .setup( instance => instance.stopLoading). returns(() => new Promise<void>( resolve => undefined));
   const tibberServiceOrigin = new TibberService(loging.object(), 'apiKey', 'queryUrl', 0.2, 333, false, true);
