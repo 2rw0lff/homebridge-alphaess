@@ -122,6 +122,28 @@ export class TibberService {
 
 
   // determine lowest next price for the curent day
+  findHighestPrice(prices: IPrice[]): IPrice {
+    let highest = undefined;
+    let highestIPrice = undefined;
+    if (prices===undefined){
+      return undefined;
+    }
+    prices.forEach(price => {
+      price.total;
+      if (highest===undefined){
+        highest = price.total;
+        highestIPrice = price;
+      }else{
+        if (price.total > highest){
+          highest = price.total;
+          highestIPrice = price;
+        }
+      }
+    });
+    return highestIPrice;
+  }
+
+  // determine lowest next price for the curent day
   async findCurrentPrice(): Promise<number> {
     const tibberQuery = new TibberQuery(this.config);
     return new Promise((resolve, reject) => {
@@ -161,7 +183,9 @@ export class TibberService {
           const dateObject = new Date(todaysLowestTime);
           this.lowestPriceHours = dateObject.getHours(); // at which hour starts minimum Price ?
           const todaysLowestPrice = todaysLowestIPrice.total;
-          const isTriggered= this._getTrigger(todaysLowestPrice, currentPrice, socCurrent, socLowerThreshold);
+          const todaysHighesttIPrice = this.findHighestPrice(todaysEnergyPrices);
+          const todaysMaxPrice = todaysHighesttIPrice.total;
+          const isTriggered= this._getTrigger(todaysLowestPrice, todaysMaxPrice, currentPrice, socCurrent, socLowerThreshold);
           const now = new Date();
           const hours = now.getHours();
           const min = now.getMinutes();
@@ -222,7 +246,8 @@ export class TibberService {
   }
 
   // check if we have the lowest energy price for today - if yes, raise the trigger
-  _getTrigger(todaysLowestPrice: number, currentPrice: number, socBattery: number, socLowerThreshold: number ): boolean {
+  _getTrigger(todaysLowestPrice: number,
+    todaysHighestPrice: number, currentPrice: number, socBattery: number, socLowerThreshold: number ): boolean {
     if (socBattery<0){
       this.getLogger().debug('battery not checked correctly ');
       return false;
@@ -240,8 +265,13 @@ export class TibberService {
       return true;
     }
 
-    if ( (socBattery <= socLowerThreshold ) &&
-        (currentPrice >= this.getMinPrice()) ) {
+    // if the highest price at some point today is higher than this.getMinPrice(),
+    //  pull the trigger if the current price is at the lowest point range
+    if ( (socBattery <= socLowerThreshold ) && // battery below threshold &&
+        (todaysHighestPrice >= this.getMinPrice()) && // we have a high price within today
+        (diffToLowestForToday <= this.getThresholdEur()) // then pull the trigger if we are in the lowest low
+
+    ) {
       this.getLogger().debug('trigger price to save from higher price trends : true');
       return true;
     }
