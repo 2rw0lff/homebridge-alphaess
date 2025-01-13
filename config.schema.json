@@ -217,7 +217,7 @@
       "tibberThresholdMaxEur": {
         "title": "Tibber absolute upper threshold in eur (upper trigger limit)",
         "type": "number",
-        "default":"0.50",
+        "default": "0.50",
         "required": false,
         "description" :  "The absolute max price of tibber needs to be reached to trigger battery loading. This wins over tibber difference threshold. Eg: daily price between 0.40-0.60 , this value = 0.50, trigger is fired each time price is over 0.50. Idea: Protect from high energy prices",
         "condition": {
@@ -302,7 +302,7 @@
             "tibberThresholdSOC",
             "tibberThresholdEur",
             "tibberThresholdTotalEur",
-            "tibberThresholdUpperEur",
+            "tibberThresholdMaxEur",
             "tibberDischargeDisabled"            
         ]
     }
