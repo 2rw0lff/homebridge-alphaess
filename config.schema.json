@@ -164,7 +164,7 @@
         "type": "boolean",
         "required": false,
         "default": false, 
-        "description":"Enable Loading of the battery when lowest price point is met yes / no",
+        "description":"Enable loading of the battery when lowest price or highest point is met yes / no",
         "condition": {
           "functionBody": "return model.tibberEnabled === true;"
         }
@@ -186,7 +186,7 @@
         "type": "integer",
         "default": 60,
         "required": false,
-        "description" :  "the battery SOC threshold that is required to trigger tibber loading. if below with price, loading is triggerd.g",
+        "description" :  "the battery SOC threshold that is required to trigger tibber loading. if below with price, loading is triggerd.",
         "condition": {
           "functionBody": "return model.tibberEnabled === true;"
         }
@@ -204,11 +204,22 @@
       },
 
       "tibberThresholdTotalEur": {
-        "title": "Tibber absolute threshold in euro ",
+        "title": "Tibber absolute lower threshold in eur (lower trigger limit)",
         "type": "number",
         "default":"0.30",
         "required": false,
-        "description" :  "The absolute max price of tibber that is acceptable to trigger loading. This wins over tibber difference threshold. ",
+        "description" :  "The absolute max price of tibber that is acceptable to trigger battery loading. This wins over tibber difference threshold. Idea: Pump into battery with low prices.",
+        "condition": {
+          "functionBody": "return model.tibberEnabled === true;"
+        }
+      },
+
+      "tibberThresholdMaxEur": {
+        "title": "Tibber absolute upper threshold in eur (upper trigger limit)",
+        "type": "number",
+        "default":"0.50",
+        "required": false,
+        "description" :  "The absolute max price of tibber needs to be reached to trigger battery loading. This wins over tibber difference threshold. Eg: daily price between 0.40-0.60 , this value = 0.50, trigger is fired each time price is over 0.50. Idea: Protect from high energy prices",
         "condition": {
           "functionBody": "return model.tibberEnabled === true;"
         }
@@ -291,6 +302,7 @@
             "tibberThresholdSOC",
             "tibberThresholdEur",
             "tibberThresholdTotalEur",
+            "tibberThresholdUpperEur",
             "tibberDischargeDisabled"            
         ]
     }

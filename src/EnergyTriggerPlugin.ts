@@ -73,7 +73,8 @@ export class EnergyTriggerPlugin extends BasePlugin {
     } else {
       this.getLOG().debug('Tibber API trigger is enabled');
       this.tibber = new TibberService(log, config.tibberAPIKey, config.tibberUrl, config.tibberThresholdEur,
-        config.tibberThresholdTotalEur, config.tibberLoadBatteryEnabled, config.tibberDischargeDisabled, config.tibberHomeId);
+        config.tibberThresholdTotalEur, config.tibberThresholdMaxEur,
+        config.tibberLoadBatteryEnabled, config.tibberDischargeDisabled, config.tibberHomeId);
     }
 
     if (this.config.mqtt_url===undefined ){

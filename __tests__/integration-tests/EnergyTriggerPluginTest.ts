@@ -131,13 +131,14 @@ test('test trigger tibber service via energy plugin - expect triggered ', async 
   const data = new AlphaDataResponse();
   data.soc = 50;
   alphaLastPowerDataResp.data = data;
+  const minThresholdPrice = 90;
 
   const alphaService = new Mock<AlphaService>()
     .setup( instance => instance.addListener).returns( () => undefined)
     .setup( instance => instance.getLastPowerData). returns(() => alphaDetailResp )
     .setup( instance => instance.isBatteryCurrentlyLoading). returns(() => true );
 
-  const tibberServiceOrigin = new TibberService(loging.object(), 'apiKey', 'queryUrl', 0.2, 100, false, true);
+  const tibberServiceOrigin = new TibberService(loging.object(), 'apiKey', 'queryUrl', 0.2, 100, minThresholdPrice, false, true);
   tibberServiceOrigin.setLogger(loging.object());
 
   const tibberServiceMock = new Mock<TibberService>()
@@ -183,6 +184,7 @@ test('test trigger tibber service via energy plugin - expect triggered ', async 
 test('test trigger tibber service via energy plugin -  expect stop battery loading ', async () => {
   const listIprice:IPrice[] = [new PriceTestData(10, '10:00'), new PriceTestData(20, '12:00')];
   const alphaLastPowerDataResp = new AlphaLastPowerDataResponse();
+  const minThresholdPrice = 90;
 
   const alphaService = new Mock<AlphaService>()
     .setup( instance => instance.addListener).returns( () => undefined)
@@ -190,7 +192,7 @@ test('test trigger tibber service via energy plugin -  expect stop battery loadi
     .setup( instance => instance.checkAndEnableReloading). returns(() => new Promise<SettingsData>((resolve => undefined)))
     .setup( instance => instance.isBatteryCurrentlyLoading). returns(() => false)
     .setup( instance => instance.stopLoading). returns(() => new Promise<void>( resolve => undefined));
-  const tibberServiceOrigin = new TibberService(loging.object(), 'apiKey', 'queryUrl', 0.2, 333, false, true);
+  const tibberServiceOrigin = new TibberService(loging.object(), 'apiKey', 'queryUrl', 0.2, 333, minThresholdPrice, false, true);
   tibberServiceOrigin.setLogger(loging.object());
 
   const tibberServiceMock = new Mock<TibberService>()
@@ -233,6 +235,8 @@ test('test trigger tibber service via energy plugin -  expect stop battery loadi
 
 test('test trigger tibber service via energy plugin - expect not triggered', async () => {
   const currentPrice = 27.0;
+  const minThresholdPrice = 90;
+
   const alphaLastPowerDataResp = new AlphaLastPowerDataResponse();
   const listIprice:IPrice[] = [new PriceTestData(34.0, '10:00'),
     new PriceTestData(currentPrice, '14:00'),
@@ -243,7 +247,7 @@ test('test trigger tibber service via energy plugin - expect not triggered', asy
     .setup( instance => instance.getLastPowerData). returns(() => alphaDetailResp )
     .setup (instance => instance.isBatteryCurrentlyLoading).returns( () => true ) ;
 
-  const tibberServiceOrigin = new TibberService(loging.object(), 'apiKey', 'queryUrl', 0.5, 1.0, false, true);
+  const tibberServiceOrigin = new TibberService(loging.object(), 'apiKey', 'queryUrl', 0.5, 1.0, minThresholdPrice, false, true);
   tibberServiceOrigin.setLogger(loging.object());
 
   const tibberServiceMock = new Mock<TibberService>()
@@ -298,6 +302,7 @@ test('test trigger tibber service via energy plugin - expect triggered despite o
   const alphaDataResponse = new AlphaDataResponse();
   alphaDataResponse.soc = 10 ;
   alphaLastPowerDataResp.data = alphaDataResponse;
+  const minThresholdPrice = 90;
 
   const alphaService = new Mock<AlphaService>()
     .setup( instance => instance.getLastPowerData). returns(() => alphaDetailResp )
@@ -309,7 +314,7 @@ test('test trigger tibber service via energy plugin - expect triggered despite o
     .setup( instance => instance.isBatteryCurrentlyLoading). returns(() => true )
     .setup( instance => instance.getSettingsData). throws(() => new Error('Could not load data') );
 
-  const tibberServiceOrigin = new TibberService(loging.object(), 'apiKey', 'queryUrl', 0.2, 1.0, false, true);
+  const tibberServiceOrigin = new TibberService(loging.object(), 'apiKey', 'queryUrl', 0.2, 1.0, minThresholdPrice, false, true);
   tibberServiceOrigin.setLogger(loging.object());
 
   const tibberServiceMock = new Mock<TibberService>()

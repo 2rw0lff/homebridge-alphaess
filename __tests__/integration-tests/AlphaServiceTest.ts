@@ -173,9 +173,9 @@ describe('Integration Test with an Mock Server', () => {
         loadingSettings['timeChaf1'] = now.getHours()+ ':' + (now.getMinutes()-2);
         loadingSettings['timeChae1'] = now.getHours()+ ':' + (now.getMinutes()+2);
         loadingSettings['gridCharge'] = 1;
-        alphaSettingsPostResponse.data = loadingSettings
+        alphaSettingsPostResponse.data = loadingSettings;
         return HttpResponse.json(alphaSettingsPostResponse);
-      } , {once:true}),
+      }, {once:true}),
       http.post(mockServerBaseUrl +'/updateDisChargeConfigInfo', async ({ request, params, cookies }) => {
         const alphaSettingsPostDisChargeResponse = new AlphaSettingsResponse();
         alphaSettingsPostDisChargeResponse.code = 200;
@@ -184,7 +184,7 @@ describe('Integration Test with an Mock Server', () => {
         unloadingSettings['timeDise1'] = now.getHours()+ ':' + (now.getMinutes()-2);
         unloadingSettings['timeDisf1'] = now.getHours()+ ':' + (now.getMinutes()+2);
         unloadingSettings['ctrDis'] = 1;
-        alphaSettingsPostDisChargeResponse.data = unloadingSettings
+        alphaSettingsPostDisChargeResponse.data = unloadingSettings;
         return HttpResponse.json(alphaSettingsPostDisChargeResponse);
       }, {once:true}),
     ];
@@ -211,13 +211,13 @@ describe('Integration Test with an Mock Server', () => {
         alphaSettingsResponse.code = 200;
         alphaSettingsResponse.msg= 'ok';
         const loadingSettings = new Map<string, unknown>();
-        
+
         loadingSettings['timeChaf1'] = now.getHours()+ ':' + (now.getMinutes()-2);
         loadingSettings['timeChae1'] = now.getHours()+ ':' + (now.getMinutes()+2);
         loadingSettings['gridCharge'] = 1;
-        alphaSettingsResponse.data = loadingSettings;      
+        alphaSettingsResponse.data = loadingSettings;
         return HttpResponse.json(alphaSettingsResponse);
-      })
+      }),
     ];
 
     mockServer.resetHandlers(...handlers);
@@ -245,7 +245,7 @@ describe('Integration Test with an Mock Server', () => {
         loadingSettings['gridCharge'] = 0;
         alphaSettingsResponse.data = loadingSettings;
         return HttpResponse.json(alphaSettingsResponse);
-      })
+      }),
     ];
     mockServer.resetHandlers(...handlers);
     const alphaService = new AlphaService(loging.object(), appid, secret, logRequestData, mockServerBaseUrl, 1000, 'serialNumber');
@@ -270,9 +270,9 @@ describe('Integration Test with an Mock Server', () => {
         loadingSettings['timeChae1'] = now.getHours()+ ':' + (now.getMinutes()+10);
         loadingSettings['gridCharge'] = 1;
         alphaSettingsResponse.data = loadingSettings;
-  
+
         return HttpResponse.json(alphaSettingsResponse);
-      })
+      }),
     ];
     mockServer.resetHandlers(...handlers);
 

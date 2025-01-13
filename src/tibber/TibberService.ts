@@ -13,12 +13,15 @@ export class TibberService {
   private lowestPriceToday : number;
   private tibberLoadBatteryEnabled: boolean;
   private thresholdEur: number ;
-  private thresholdTotalEur: number;
+  private thresholdTotalMinEur: number;
+  private thresholdTotalMaxEur: number;
+
   private triggerdToday: boolean;
   private tibberDischargeDisabled: boolean;
 
 
-  constructor(logger:Logging, tibberApiKey:string, tibberQueryUrl:string, thresholdEur: number, thresholdTotalEur: number,
+  constructor(logger:Logging, tibberApiKey:string, tibberQueryUrl:string, thresholdEur: number,
+    thresholdMinTotalEur: number, tibberThresholdMaxTotalEur: number,
     tibberLoadBatteryEnabled:boolean, tibberDischargeDisabled:boolean, tibberHomeId?: string){
     this.config = {
       // Endpoint configuration
@@ -40,7 +43,8 @@ export class TibberService {
     this.lowestPriceToday = undefined;
     this.tibberLoadBatteryEnabled = tibberLoadBatteryEnabled;
     this.triggerdToday = undefined;
-    this.thresholdTotalEur = thresholdTotalEur;
+    this.thresholdTotalMinEur = thresholdMinTotalEur;
+    this.thresholdTotalMaxEur = tibberThresholdMaxTotalEur;
     this.tibberDischargeDisabled = tibberDischargeDisabled; // stop discharging during tibber time
   }
 
@@ -72,10 +76,17 @@ export class TibberService {
 
   }
 
-  // get maxium price allowed by configuration to load
+  // get maxium price allowed by configuration to load (usage: save some money during low prices)
   getMaxPrice(): number {
-    return this.thresholdTotalEur;
+    return this.thresholdTotalMinEur; // minimum price limit to trigger loadijg
   }
+
+
+  // get min upper price allowed by configuration to load (usage: save from high energy prices)
+  getMinPrice(): number {
+    return this.thresholdTotalMaxEur; // maximum price limit to trigger loading
+  }
+
 
   // get diff price OK to load
   getDiff(): number {
@@ -198,7 +209,7 @@ export class TibberService {
   }
 
   getThresholdTotalEur(){
-    return this.thresholdTotalEur;
+    return this.thresholdTotalMinEur;
   }
 
 
@@ -216,17 +227,25 @@ export class TibberService {
       this.getLogger().debug('battery not checked correctly ');
       return false;
     }
-    const diffToLowest = currentPrice - todaysLowestPrice;
+    const diffToLowestForToday = currentPrice - todaysLowestPrice; // difference to lowest price of today
 
     // check if diffToLowest is in acceptable range
-    this.getLogger().debug('lowest today: ' + todaysLowestPrice + ' current: ' + currentPrice + ' diffToLowest: ' + diffToLowest +
-         ' max thresholdTotalEur: ' + this.thresholdTotalEur );
+    this.getLogger().debug('lowest today: ' + todaysLowestPrice + ' current: ' + currentPrice + ' diffToLowest: ' + diffToLowestForToday +
+         ' thresholdTotalMinEur: ' + this.thresholdTotalMinEur + ' thresholdTotalMaxEur: ' + this.thresholdTotalMaxEur);
 
-    if (diffToLowest <= this.getThresholdEur() && (socBattery <= socLowerThreshold ) && (currentPrice <= this.getThresholdTotalEur()) ) {
-      this.getLogger().debug('trigger lowest price: true');
+    if (diffToLowestForToday <= this.getThresholdEur()
+        && (socBattery <= socLowerThreshold )
+        && (currentPrice <= this.getThresholdTotalEur()) ) {
+      this.getLogger().debug('trigger price to pump with low price: true');
       return true;
     }
-    this.getLogger().debug('trigger lowest price: false');
+
+    if ( (socBattery <= socLowerThreshold ) &&
+        (currentPrice >= this.getMinPrice()) ) {
+      this.getLogger().debug('trigger price to save from higher price trends : true');
+      return true;
+    }
+    this.getLogger().debug('trigger price: false');
     return false;
   }
 
