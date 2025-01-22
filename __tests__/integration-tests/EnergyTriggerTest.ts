@@ -145,6 +145,9 @@ test('test trigger tibber service via energy plugin - expect triggered ', async 
     .setup(instance => instance.getDailyMap).returns(() => new Map<number, PriceTrigger>)
     .setup(instance => instance.getLowestPriceHours).returns( () => 10)
     .setup(instance => instance.getThresholdTotalEur).returns( () => 100)
+    .setup(instance => instance.findLowestPriceBefore).mimics(tibberServiceOrigin)
+    .setup(instance => instance.isBeforeTodaysHour).mimics(tibberServiceOrigin)
+
     .setup(instance => instance.findCurrentPrice).returns( () => new Promise<number>((resolve => {
       resolve(10);
     })))
@@ -321,6 +324,8 @@ test('test trigger tibber service via energy plugin - expect triggered despite o
     .setup(instance => instance._getTrigger).mimics(tibberServiceOrigin)
     .setup(instance => instance.findLowestPrice).mimics(tibberServiceOrigin)
     .setup(instance => instance.findHighestPrice).mimics(tibberServiceOrigin)
+    .setup(instance => instance.findLowestPriceBefore).mimics(tibberServiceOrigin)
+    .setup(instance => instance.isBeforeTodaysHour).mimics(tibberServiceOrigin)
     .setup(instance => instance.getDailyMap).returns(() => new Map<number, PriceTrigger>)
     .setup(instance => instance.getLowestPriceHours).returns( () => 10)
     .setup(instance => instance.getThresholdTotalEur).returns( () => 100)

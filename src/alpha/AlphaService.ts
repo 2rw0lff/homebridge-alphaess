@@ -101,15 +101,15 @@ export class AlphaService {
         if (disableUnloadingDuringLoadingWithNet){
           // start load, set unloading frame
           if (updateSettingsData.settingsLoading['gridCharge'] === 1){
-            //then            
-              await this.setAlphaSettingsDisCharge(serialNumber, updateSettingsData.settingsUnloading).catch( (error) => {
-                throw new Error('could not set update battery not loading time ' + error);
-              });
+            //then
+            await this.setAlphaSettingsDisCharge(serialNumber, updateSettingsData.settingsUnloading).catch( (error) => {
+              throw new Error('could not set update battery not loading time ' + error);
+            });
           }
 
           // stop load, erase existing unloading time frame
           if (updateSettingsData.settingsLoading['gridCharge'] === 0){
-              this.stopUnloading(serialNumber);          
+            this.stopUnloading(serialNumber);
           }
         }
       }).catch(() => {
@@ -574,7 +574,6 @@ export class AlphaService {
         triggerStatus.lastTriggerStart = null;
       }
     }
-
 
     if (stringPowerTotal > triggerConfig.powerLoadingThreshold &&
       (( secondsSinceLastStart > triggerConfig.powerLoadingThresholdSecondsUpper ))) {

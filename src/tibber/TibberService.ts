@@ -2,6 +2,7 @@ import { TibberQuery, IConfig } from 'tibber-api';
 import { IPrice } from 'tibber-api/lib/src/models/IPrice';
 import { PriceTrigger } from '../interfaces';
 import { Logging } from 'homebridge';
+import { parse, parseISO } from 'date-fns';
 
 
 export class TibberService {
@@ -120,6 +121,37 @@ export class TibberService {
     return lowestIPrice;
   }
 
+  // isBeforeTodaysHour
+
+  isBeforeTodaysHour(timeStamp:string, hour: number) {
+    //  "startsAt": "2017-10-11T19:00:00+02:00"
+    const date = parseISO(timeStamp);
+    return date.getHours() <= hour;
+  }
+
+  // determine lowest price before hour number
+  findLowestPriceBefore(prices: IPrice[], hour: number): IPrice {
+    let lowest = undefined;
+    let lowestIPrice = undefined;
+    if (prices===undefined){
+      return undefined;
+    }
+    prices.forEach(price => {
+      price.total;
+      if (lowest===undefined){
+        lowest = price.total;
+        lowestIPrice = price;
+      }else{
+        if (price.total < lowest && (this.isBeforeTodaysHour(price.startsAt, hour))){
+          lowest = price.total;
+          lowestIPrice = price;
+        }
+      }
+    });
+    return lowestIPrice;
+  }
+
+
 
   // determine lowest next price for the curent day
   findHighestPrice(prices: IPrice[]): IPrice {
@@ -184,8 +216,19 @@ export class TibberService {
           this.lowestPriceHours = dateObject.getHours(); // at which hour starts minimum Price ?
           const todaysLowestPrice = todaysLowestIPrice.total;
           const todaysHighesttIPrice = this.findHighestPrice(todaysEnergyPrices);
-          const todaysMaxPrice = todaysHighesttIPrice.total;
-          const isTriggered= this._getTrigger(todaysLowestPrice, todaysMaxPrice, currentPrice, socCurrent, socLowerThreshold);
+          const todaysHighestPrice = todaysHighesttIPrice.total;
+          const todaysHighestPriceHour = parseISO(todaysHighesttIPrice.startsAt).getHours();
+          const lowestPriceUntilPeakHour = this.findLowestPriceBefore(todaysEnergyPrices, todaysHighestPriceHour).total;
+
+          // check if we have the lowest energy price for today - if yes, raise the trigger
+          const isTriggered= this._getTrigger(todaysLowestPrice,
+            todaysHighestPrice,
+            todaysHighestPriceHour,
+            lowestPriceUntilPeakHour,
+            currentPrice,
+            socCurrent,
+            socLowerThreshold);
+
           const now = new Date();
           const hours = now.getHours();
           const min = now.getMinutes();
@@ -247,7 +290,12 @@ export class TibberService {
 
   // check if we have the lowest energy price for today - if yes, raise the trigger
   _getTrigger(todaysLowestPrice: number,
-    todaysHighestPrice: number, currentPrice: number, socBattery: number, socLowerThreshold: number ): boolean {
+    todaysHighestPrice: number,
+    todaysHighestPriceHour: number,
+    lowestPriceUntilPeakHours: number,
+    currentPrice: number,
+    socBattery: number,
+    socLowerThreshold: number): boolean {
     if (socBattery<0){
       this.getLogger().debug('battery not checked correctly ');
       return false;
@@ -265,12 +313,22 @@ export class TibberService {
       return true;
     }
 
+    // peak protection
+    // e.g. high peak 11:00 50 ct, lowest prices until now  = 11:00 at 06:00 -> 20 ct;
+    // trigger if :
+    //    peak expected today (generally)
+    //    current hour is before peak hour, and not after
+    //    current price is within low befor peak hours
+    const highPeakExpectedToday = todaysHighestPrice >= this.getMinPrice();
+    const currentHourBeforePeak = new Date().getHours() < todaysHighestPriceHour;
+    const diffCurrentToLowWithinHours = currentPrice - lowestPriceUntilPeakHours; // lowest price until peak hour
+
     // if the highest price at some point today is higher than this.getMinPrice(),
     //  pull the trigger if the current price is at the lowest point range
     if ( (socBattery <= socLowerThreshold ) && // battery below threshold &&
-        (todaysHighestPrice >= this.getMinPrice()) && // we have a high price within today
-        (diffToLowestForToday <= this.getThresholdEur()) // then pull the trigger if we are in the lowest low
-
+        ( highPeakExpectedToday ) && // we have a high price within today
+        ( currentHourBeforePeak ) && // current hour is one hour before peak hour
+        (diffCurrentToLowWithinHours <= this.getThresholdEur()) // current price is within threshold of lowest before high time
     ) {
       this.getLogger().debug('trigger price to save from higher price trends : true');
       return true;

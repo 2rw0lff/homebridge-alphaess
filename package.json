@@ -42,6 +42,7 @@
     "test:watch": "jest --watch"
   },
   "dependencies": {
+    "date-fns": "^2.23.0",
     "jackson-js": "^1.1.0",
     "mqtt": "^4.3.7",
     "request": "^2.88.2",
